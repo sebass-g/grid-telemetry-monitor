@@ -18,10 +18,12 @@ KEY_PREFIX = "device_state:"
 
 
 def get_redis_client() -> redis.Redis:
+    """Return a Redis client configured for device-state health monitoring."""
     return redis.Redis(host=REDIS_HOST, port=REDIS_PORT, db=REDIS_DB, decode_responses=True)
 
 
 def main() -> None:
+    """Continuously evaluate fleet health and raise an outage alert when the device set exceeds the threshold."""
     redis_client = get_redis_client()
     known_fleet: set[str] = set()
 

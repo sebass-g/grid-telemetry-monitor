@@ -27,10 +27,19 @@ RETRY_DELAY_SECONDS = float(os.getenv("RABBITMQ_RETRY_DELAY_SECONDS", "1.0"))
 
 
 def get_redis_client() -> redis.Redis:
+    """Return a configured Redis client bound to the telemetry state database."""
     return redis.Redis(host=REDIS_HOST, port=REDIS_PORT, db=REDIS_DB, decode_responses=True)
 
 
 def connect_rabbitmq() -> pika.BlockingConnection:
+    """Open a blocking RabbitMQ connection with retry-based startup logic.
+
+    Returns:
+        A connected RabbitMQ session ready for queue consumption.
+
+    Raises:
+        RuntimeError: If the broker cannot be reached within the configured retry budget.
+    """
     last_error: Exception | None = None
     for attempt in range(1, MAX_RETRIES + 1):
         try:
@@ -52,6 +61,14 @@ def connect_rabbitmq() -> pika.BlockingConnection:
 
 
 def process_message(ch: pika.channel.Channel, method: pika.spec.Basic.Deliver, properties: Any, body: bytes) -> None:
+    """Persist a telemetry payload in Redis and acknowledge it only after success.
+
+    Args:
+        ch: Active RabbitMQ channel handling the current delivery.
+        method: Metadata describing the broker delivery tags.
+        properties: Message properties supplied by AMQP.
+        body: Raw JSON payload from the queue.
+    """
     try:
         payload = json.loads(body.decode("utf-8"))
     except (json.JSONDecodeError, UnicodeDecodeError) as exc:
@@ -73,6 +90,7 @@ def process_message(ch: pika.channel.Channel, method: pika.spec.Basic.Deliver, p
 
 
 def main() -> None:
+    """Run the telemetry worker loop, reconnecting to RabbitMQ when broker sessions drop."""
     connection: pika.BlockingConnection | None = None
     while True:
         try:

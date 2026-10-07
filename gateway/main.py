@@ -26,6 +26,15 @@ app = FastAPI(title="Utility Grid Telemetry Gateway")
 
 
 class HeartbeatPayload(BaseModel):
+    """Canonical payload for a device heartbeat emitted by an edge client.
+
+    Attributes:
+        device_id: Unique device identifier for the originating grid node.
+        lat: Latitude coordinate of the device.
+        lon: Longitude coordinate of the device.
+        timestamp: ISO 8601 timestamp for the heartbeat event.
+    """
+
     device_id: str = Field(..., min_length=1)
     lat: float
     lon: float
@@ -33,6 +42,16 @@ class HeartbeatPayload(BaseModel):
 
 
 def publish_heartbeat(payload: dict[str, Any]) -> None:
+    """Publish a telemetry payload to RabbitMQ with retry logic.
+
+    Args:
+        payload: Structured device heartbeat data that should be delivered to the
+            telemetry_events queue.
+
+    Raises:
+        RuntimeError: If the broker cannot accept the message after the configured
+            retry policy is exhausted.
+    """
     last_error: Exception | None = None
 
     for attempt in range(1, MAX_RETRIES + 1):
@@ -79,7 +98,18 @@ def publish_heartbeat(payload: dict[str, Any]) -> None:
 
 @app.post("/api/v1/heartbeat", status_code=status.HTTP_202_ACCEPTED)
 async def ingest_heartbeat(payload: HeartbeatPayload) -> dict[str, str]:
-    payload_dict = payload.model_dump(mode="json")
+    """Accept a device heartbeat, publish it to RabbitMQ, and return immediately.
+
+    Args:
+        payload: Structured heartbeat payload from a remote device or simulator.
+
+    Returns:
+        A 202 Accepted acknowledgement confirming the publish attempt was accepted.
+
+    Raises:
+        HTTPException: Returns 503 when the RabbitMQ broker is unavailable.
+    """
+    payload_dict: dict[str, Any] = payload.model_dump(mode="json")
     try:
         publish_heartbeat(payload_dict)
     except RuntimeError as exc:
