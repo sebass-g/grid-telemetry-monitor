@@ -41,6 +41,29 @@ class HeartbeatPayload(BaseModel):
     timestamp: str
 
 
+def check_rabbitmq_health() -> bool:
+    """Verify that RabbitMQ is reachable from the gateway service.
+
+    Returns:
+        True when a lightweight connection can be established, otherwise False.
+    """
+    try:
+        credentials = pika.PlainCredentials(RABBITMQ_USER, RABBITMQ_PASS)
+        connection = pika.BlockingConnection(
+            pika.ConnectionParameters(
+                host=RABBITMQ_HOST,
+                port=RABBITMQ_PORT,
+                credentials=credentials,
+                socket_timeout=2,
+            )
+        )
+        connection.close()
+        return True
+    except (pika.exceptions.AMQPConnectionError, OSError):
+        logger.warning("RabbitMQ health check failed at %s:%s", RABBITMQ_HOST, RABBITMQ_PORT)
+        return False
+
+
 def publish_heartbeat(payload: dict[str, Any]) -> None:
     """Publish a telemetry payload to RabbitMQ with retry logic.
 
@@ -94,6 +117,18 @@ def publish_heartbeat(payload: dict[str, Any]) -> None:
                 connection.close()
 
     raise RuntimeError(f"Failed to publish telemetry for device {payload.get('device_id', 'unknown')}") from last_error
+
+
+@app.get("/health")
+async def health_check() -> dict[str, str]:
+    """Report whether the gateway is ready to accept telemetry traffic."""
+    if check_rabbitmq_health():
+        return {"status": "ok"}
+
+    raise HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail="RabbitMQ unavailable; gateway is not ready.",
+    )
 
 
 @app.post("/api/v1/heartbeat", status_code=status.HTTP_202_ACCEPTED)
