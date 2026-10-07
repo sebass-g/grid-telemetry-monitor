@@ -14,7 +14,8 @@ REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
 REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
 REDIS_DB = int(os.getenv("REDIS_DB", "0"))
 SCAN_INTERVAL_SECONDS = int(os.getenv("SCAN_INTERVAL_SECONDS", "5"))
-KEY_PREFIX = "device_state:"
+KEY_PREFIX = os.getenv("REDIS_DEVICE_KEY_PREFIX", "device_state:")
+GRID_OUTAGE_THRESHOLD_RATIO = float(os.getenv("GRID_OUTAGE_THRESHOLD_RATIO", "0.75"))
 
 
 def get_redis_client() -> redis.Redis:
@@ -44,7 +45,7 @@ def main() -> None:
 
         if total_known == 0:
             logger.info("✅ Grid stable. Active nodes: 0/0")
-        elif offline_ratio > 0.75:
+        elif offline_ratio > GRID_OUTAGE_THRESHOLD_RATIO:
             logger.warning(
                 "🚨 CRITICAL: LOCALIZED GRID OUTAGE DETECTED 🚨 Active nodes: %s/%s | Offline: %s (%s%%)",
                 active_count,

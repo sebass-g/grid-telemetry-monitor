@@ -18,7 +18,7 @@ RABBITMQ_HOST = os.getenv("RABBITMQ_HOST", "localhost")
 RABBITMQ_PORT = int(os.getenv("RABBITMQ_PORT", "5672"))
 RABBITMQ_USER = os.getenv("RABBITMQ_USER", "admin")
 RABBITMQ_PASS = os.getenv("RABBITMQ_PASS", "password123")
-QUEUE_NAME = "telemetry_events"
+QUEUE_NAME = os.getenv("TELEMETRY_QUEUE_NAME", "telemetry_events")
 MAX_RETRIES = int(os.getenv("RABBITMQ_MAX_RETRIES", "10"))
 RETRY_DELAY_SECONDS = float(os.getenv("RABBITMQ_RETRY_DELAY_SECONDS", "1.0"))
 
