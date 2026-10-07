@@ -73,20 +73,47 @@ def process_message(ch: pika.channel.Channel, method: pika.spec.Basic.Deliver, p
 
 
 def main() -> None:
-    connection = connect_rabbitmq()
-    channel = connection.channel()
-    channel.queue_declare(queue=QUEUE_NAME, durable=True)
-    channel.basic_qos(prefetch_count=1)
-    channel.basic_consume(queue=QUEUE_NAME, on_message_callback=process_message)
+    connection: pika.BlockingConnection | None = None
+    while True:
+        try:
+            if connection is None or not connection.is_open:
+                connection = connect_rabbitmq()
 
-    logger.info("Worker started; listening for messages on queue %s", QUEUE_NAME)
-    try:
-        channel.start_consuming()
-    except KeyboardInterrupt:
-        logger.info("Worker shutting down gracefully.")
-        channel.stop_consuming()
-    finally:
-        connection.close()
+            channel = connection.channel()
+            channel.queue_declare(queue=QUEUE_NAME, durable=True)
+            channel.basic_qos(prefetch_count=1)
+            channel.basic_consume(queue=QUEUE_NAME, on_message_callback=process_message)
+
+            logger.info("Worker started; listening for messages on queue %s", QUEUE_NAME)
+            channel.start_consuming()
+        except KeyboardInterrupt:
+            logger.info("Worker shutting down gracefully.")
+            if connection is not None and connection.is_open:
+                connection.close()
+            break
+        except (
+            pika.exceptions.ConnectionClosedByBroker,
+            pika.exceptions.AMQPConnectionError,
+            pika.exceptions.ChannelClosedByBroker,
+            pika.exceptions.StreamLostError,
+        ) as exc:
+            logger.warning("RabbitMQ connection lost: %s. Reconnecting in %s seconds.", exc, RETRY_DELAY_SECONDS)
+            if connection is not None and connection.is_open:
+                try:
+                    connection.close()
+                except Exception:
+                    pass
+            connection = None
+            time.sleep(RETRY_DELAY_SECONDS)
+        except Exception as exc:
+            logger.exception("Unexpected worker error: %s", exc)
+            if connection is not None and connection.is_open:
+                try:
+                    connection.close()
+                except Exception:
+                    pass
+            connection = None
+            time.sleep(RETRY_DELAY_SECONDS)
 
 
 if __name__ == "__main__":
